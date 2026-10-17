@@ -37,6 +37,10 @@ func (f *Forwarder) cloneMedia(ctx context.Context, opts cloneOptions, dryRun bo
 		return &tg.InputFile{}, nil
 	}
 
+	if f.pipeline != nil && opts.media.Size > bigUploadThreshold {
+		return f.cloneParts(ctx, opts, tutil.BestThreads(opts.media.Size, f.opts.Threads))
+	}
+
 	temp, err := os.CreateTemp(f.opts.TempDir, "tdl_*")
 	if err != nil {
 		return nil, errors.Wrap(err, "create temp file")
