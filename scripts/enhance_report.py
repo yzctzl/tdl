@@ -52,7 +52,7 @@ def summarize(path):
         datetime.fromisoformat(events[-1]['time'].replace('Z', '+00:00'))
         - datetime.fromisoformat(events[0]['time'].replace('Z', '+00:00'))
     ).total_seconds()
-    return {
+    result = {
         'elapsed_seconds': round(elapsed, 3),
         'overlap_seconds': round(overlap, 3),
         'download_active_seconds': round(active_seconds[0], 3),
@@ -68,6 +68,15 @@ def summarize(path):
         'failed_groups': failures,
         'cancelled_groups': cancelled,
     }
+    if terminal_status:
+        # Queued cancellation has no native group events; count requests too.
+        result.update(
+            completed_requests=len(terminal_status),
+            succeeded_requests=sum(s == 'succeeded' for s in terminal_status.values()),
+            failed_requests=sum(s == 'failed' for s in terminal_status.values()),
+            cancelled_requests=sum(s == 'cancelled' for s in terminal_status.values()),
+        )
+    return result
 
 
 if __name__ == '__main__':

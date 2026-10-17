@@ -117,6 +117,43 @@ The same report helper accepts finite and resident logs and aggregates active
 operations across requests. A cancelled group is counted separately from failed
 groups in new-format logs.
 
+## Sustained resident check
+
+A later run kept the same account open for a 1.13 GiB three-video album and a
+dynamically submitted ten-member mixed album. It used two request workers, two
+account-wide downloads, two uploads, eight chunk workers per file and the default
+connection pool size of eight. A third queued request was cancelled, then a new
+dry-run request completed while the large album was still transferring.
+
+| Measurement | Observation |
+| --- | --- |
+| End-to-end process wall time | 358.54 seconds |
+| Active-direction overlap | 118.09 seconds |
+| Download active average | 5.17 MiB/s |
+| Upload active average | 4.77 MiB/s |
+| Global direction peaks | Two downloads, two uploads |
+| Local stdio ping and queued-cancel response | About 0.3 ms each |
+| New dry-run completion during the large transfer | 2.82 seconds |
+| Confirmed delivery | Two albums, thirteen media |
+| Request results | Three succeeded (one dry run), one queued cancellation |
+| Peak temporary data / resident memory, sampled each second | About 961.75 MiB / 110.34 MiB |
+
+Readback of the three destination videos matched document sizes, source order,
+video dimensions, durations and original-thumbnail presence. The scratch
+directory was empty and the Bot was restored. No cancelled request produced a
+confirmed destination message.
+
+Worker admission and control responsiveness do not promise immediate bandwidth
+for a new request. In this deliberately limited two-download configuration, the
+small album waited behind already admitted large files and completed about
+187.77 seconds after submission. Byte transfer still obeys the configured
+account-wide budget; future tuning should measure latency as well as throughput.
+There is no one-way baseline or high-fanout live load result yet, so these numbers
+do not establish account limits or bandwidth saturation.
+
+The report helper counts native group results and resident request results
+separately: queued cancellation has a terminal request but no native group.
+
 ## Before production integration
 
 The Python task engine should retain permission checks, durable jobs, retry
@@ -134,6 +171,5 @@ This stage still downloads each file fully before uploading it; different files
 and requests overlap. Single-file streaming, crash adoption of a detached child,
 a transport-side durable ledger and an adaptive bandwidth tuner are not added.
 A 1.13 GiB finite-album benchmark is recorded in
-[duplex-prototype.md](duplex-prototype.md#sustained-large-album-benchmark). A
-resident many-request throughput baseline is still needed before choosing
-production defaults.
+[duplex-prototype.md](duplex-prototype.md#sustained-large-album-benchmark). Higher-fanout resident tests and one-way baselines are still needed before
+choosing production defaults.
