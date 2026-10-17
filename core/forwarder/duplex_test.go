@@ -19,7 +19,7 @@ func testContext(t *testing.T) context.Context {
 
 func TestDirectionsOverlapAndCancellationReleasesSlots(t *testing.T) {
 	ctx := testContext(t)
-	pipeline := newTransferPipeline(1, 1)
+	pipeline := NewTransferPool(1, 1)
 	uploading := make(chan struct{})
 	downloaded := make(chan struct{})
 	done := make(chan error, 2)

@@ -3,6 +3,7 @@ package forward
 import (
 	"context"
 	"fmt"
+	"io"
 	"os"
 	"reflect"
 	"strings"
@@ -58,21 +59,36 @@ func Run(ctx context.Context, c *telegram.Client, kvd storage.Storage, opts Opti
 		return nil
 	}
 
-	ctx = tctx.WithKV(ctx, kvd)
+	session := newSession(ctx, c, kvd)
+	defer multierr.AppendInvoke(&rerr, multierr.Close(session))
+	return session.forward(ctx, opts, "", os.Stdout)
+}
 
-	pool := dcpool.NewPool(c,
-		int64(viper.GetInt(consts.FlagPoolSize)),
-		tclient.NewDefaultMiddlewares(ctx, viper.GetDuration(consts.FlagReconnectTimeout))...)
-	defer multierr.AppendInvoke(&rerr, multierr.Close(pool))
+// session owns the account's connection pool for its complete process lifetime.
+// Request cancellation never closes resources used by another request.
+type session struct {
+	storage   storage.Storage
+	pool      dcpool.Pool
+	manager   *peers.Manager
+	transfers *forwarder.TransferPool
+}
 
-	ctx = tctx.WithPool(ctx, pool)
+func newSession(ctx context.Context, c *telegram.Client, kvd storage.Storage) *session {
+	pool := dcpool.NewPool(c, int64(viper.GetInt(consts.FlagPoolSize)), tclient.NewDefaultMiddlewares(ctx, viper.GetDuration(consts.FlagReconnectTimeout))...)
+	return &session{storage: kvd, pool: pool, manager: peers.Options{Storage: storage.NewPeers(kvd)}.Build(pool.Default(ctx))}
+}
+
+func (s *session) Close() error { return s.pool.Close() }
+
+func (s *session) forward(ctx context.Context, opts Options, temporary string, output io.Writer) error {
+	ctx = tctx.WithKV(ctx, s.storage)
+	ctx = tctx.WithPool(ctx, s.pool)
+	pool, manager := s.pool, s.manager
 
 	dialogs, err := collectDialogs(ctx, opts.From, opts.Desc)
 	if err != nil {
 		return errors.Wrap(err, "collect dialogs")
 	}
-
-	manager := peers.Options{Storage: storage.NewPeers(kvd)}.Build(pool.Default(ctx))
 
 	to, err := resolveDest(ctx, manager, opts.To)
 	if err != nil {
@@ -96,7 +112,7 @@ func Run(ctx context.Context, c *telegram.Client, kvd storage.Storage, opts Opti
 	}
 	var reporter forwarder.Progress
 	if opts.JSON {
-		reporter = newJSONProgress(os.Stdout)
+		reporter = newJSONProgress(output)
 	} else {
 		fwProgress := prog.New(pw.FormatNumber)
 		fwProgress.SetNumTrackersExpected(totalMessages(dialogs))
@@ -127,6 +143,8 @@ func Run(ctx context.Context, c *telegram.Client, kvd storage.Storage, opts Opti
 		Duplex:         duplex,
 		RemoveSpoilers: opts.RemoveSpoilers,
 		Reupload:       opts.Reupload,
+		Transfers:      s.transfers,
+		TempDir:        temporary,
 		Threads:        viper.GetInt(consts.FlagThreads),
 	})
 

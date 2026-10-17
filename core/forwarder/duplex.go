@@ -14,10 +14,11 @@ import (
 // One client and namespace own every RPC; no copied authorization is needed.
 type DuplexOptions struct{ Groups, Downloads, Uploads int }
 
-type transferPipeline struct{ downloads, uploads chan struct{} }
+type TransferPool struct{ downloads, uploads chan struct{} }
 
-func newTransferPipeline(downloads, uploads int) *transferPipeline {
-	return &transferPipeline{make(chan struct{}, downloads), make(chan struct{}, uploads)}
+// NewTransferPool creates direction budgets shared by independent requests.
+func NewTransferPool(downloads, uploads int) *TransferPool {
+	return &TransferPool{make(chan struct{}, downloads), make(chan struct{}, uploads)}
 }
 
 func transferStage(ctx context.Context, slots chan struct{}, run func(context.Context) error) error {
@@ -33,7 +34,7 @@ func transferStage(ctx context.Context, slots chan struct{}, run func(context.Co
 	return run(ctx)
 }
 
-func (p *transferPipeline) transfer(ctx context.Context, download, upload func(context.Context) error) error {
+func (p *TransferPool) transfer(ctx context.Context, download, upload func(context.Context) error) error {
 	if err := transferStage(ctx, p.downloads, download); err != nil {
 		return err
 	}

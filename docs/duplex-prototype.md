@@ -136,6 +136,8 @@ of the check commands above.
 - A final acknowledgement failure remains uncertain, rather than safe to retry
 - Windows/macOS cross-compilation does not replace native device testing
 
+The resident follow-up is documented in [enhance-resident.md](enhance-resident.md).
+
 The next decision should follow a larger-file and longer-running benchmark.
 If worthwhile, the next stage is a resident request/response interface that owns
 all MTProto operations for an account. Python keeps permissions, durable business

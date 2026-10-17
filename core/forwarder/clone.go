@@ -37,7 +37,7 @@ func (f *Forwarder) cloneMedia(ctx context.Context, opts cloneOptions, dryRun bo
 		return &tg.InputFile{}, nil
 	}
 
-	temp, err := os.CreateTemp("", "tdl_*")
+	temp, err := os.CreateTemp(f.opts.TempDir, "tdl_*")
 	if err != nil {
 		return nil, errors.Wrap(err, "create temp file")
 	}

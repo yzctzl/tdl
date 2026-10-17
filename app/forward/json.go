@@ -1,7 +1,9 @@
 package forward
 
 import (
+	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"sync"
 	"time"
@@ -22,6 +24,7 @@ type jsonProgress struct {
 }
 
 type progressEvent struct {
+	Status          string      `json:"status,omitempty"`
 	Event           string      `json:"event"`
 	Time            time.Time   `json:"time"`
 	Source          int64       `json:"source"`
@@ -70,6 +73,15 @@ func (p *jsonProgress) emit(elem forwarder.Elem, event, direction string, delta 
 	value := progressEvent{ActiveDownloads: active[0], ActiveUploads: active[1], Event: event, Time: time.Now().UTC(), Source: key.from, Message: key.msg, Target: key.to, Topic: elem.Thread(), Direction: direction, Downloaded: count[0], Uploaded: count[1], MessageIDs: ids, DryRun: elem.AsDryRun()}
 	if failure != nil {
 		value.Error = failure.Error()
+	}
+	if event == "done" {
+		value.Status = "succeeded"
+		if failure != nil {
+			value.Status = "failed"
+			if errors.Is(failure, context.Canceled) {
+				value.Status = "cancelled"
+			}
+		}
 	}
 	if p.err == nil {
 		p.err = p.out.Encode(value)

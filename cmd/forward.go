@@ -58,6 +58,7 @@ func newForward(enhanced bool) *cobra.Command {
 	cmd.Flags().BoolVar(&opts.RemoveSpoilers, "remove-spoilers", enhanced, "remove media and text spoilers from destination copies")
 	cmd.Flags().BoolVar(&opts.Reupload, "reupload", false, "force byte transfer for unprotected media (benchmarking)")
 	if enhanced {
+		cmd.AddCommand(newEnhanceServe())
 		cmd.Use = "enhance"
 		cmd.Short = "Experimental full-duplex clone with native albums and JSON results"
 	}

@@ -32,13 +32,15 @@ type Options struct {
 	Duplex         *DuplexOptions
 	RemoveSpoilers bool
 	Reupload       bool
+	Transfers      *TransferPool
+	TempDir        string
 }
 
 type Forwarder struct {
 	sent     map[tuple]struct{} // used to filter grouped messages which are already sent
 	rand     *rand.Rand
 	opts     Options
-	pipeline *transferPipeline
+	pipeline *TransferPool
 }
 
 type tuple struct {
@@ -52,8 +54,10 @@ func New(opts Options) *Forwarder {
 		rand: rand.New(rand.NewSource(time.Now().UnixNano())),
 		opts: opts,
 	}
-	if opts.Duplex != nil && opts.Duplex.Downloads > 0 && opts.Duplex.Uploads > 0 {
-		f.pipeline = newTransferPipeline(opts.Duplex.Downloads, opts.Duplex.Uploads)
+	if opts.Transfers != nil {
+		f.pipeline = opts.Transfers
+	} else if opts.Duplex != nil && opts.Duplex.Downloads > 0 && opts.Duplex.Uploads > 0 {
+		f.pipeline = NewTransferPool(opts.Duplex.Downloads, opts.Duplex.Uploads)
 	}
 	return f
 }
