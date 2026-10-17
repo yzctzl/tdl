@@ -46,6 +46,12 @@ func (f *Forwarder) cloneMedia(ctx context.Context, opts cloneOptions, dryRun bo
 		multierr.AppendInto(&rerr, os.Remove(temp.Name()))
 	}()
 
+	var stream *transferFile
+	var destination io.WriterAt = temp
+	if f.pipeline != nil {
+		stream = newTransferFile(temp, opts.media.Size)
+		destination = stream
+	}
 	threads := tutil.BestThreads(opts.media.Size, f.opts.Threads)
 
 	download := func(ctx context.Context) error {
@@ -55,14 +61,20 @@ func (f *Forwarder) cloneMedia(ctx context.Context, opts cloneOptions, dryRun bo
 			WithPartSize(tdownloader.MaxPartSize).
 			Download(f.opts.Pool.Client(ctx, opts.media.DC), opts.media.InputFileLoc).
 			WithThreads(threads).
-			Parallel(ctx, writeAt{f: temp, opts: opts, notify: func(n int64) { f.transferProgress(opts.elem, "download", n) }})
+			Parallel(ctx, writeAt{f: destination, opts: opts, notify: func(n int64) { f.transferProgress(opts.elem, "download", n) }})
+		if err == nil && stream != nil {
+			err = stream.finish()
+		}
 		return err
 	}
 	var file tg.InputFileClass
 	upload := func(ctx context.Context) error {
 		f.stageProgress(opts.elem, "upload", true)
 		defer f.stageProgress(opts.elem, "upload", false)
-		if _, err := temp.Seek(0, io.SeekStart); err != nil {
+		var source io.Reader = temp
+		if stream != nil {
+			source = &transferReader{file: stream, ctx: ctx}
+		} else if _, err := temp.Seek(0, io.SeekStart); err != nil {
 			return errors.Wrap(err, "seek")
 		}
 		var err error
@@ -70,11 +82,11 @@ func (f *Forwarder) cloneMedia(ctx context.Context, opts cloneOptions, dryRun bo
 			WithPartSize(tuploader.MaxPartSize).
 			WithThreads(threads).
 			WithProgress(uploaded{opts: opts, prev: atomic.NewInt64(0), notify: func(n int64) { f.transferProgress(opts.elem, "upload", n) }}).
-			Upload(ctx, uploader.NewUpload(opts.media.Name, temp, opts.media.Size))
+			Upload(ctx, uploader.NewUpload(opts.media.Name, source, opts.media.Size))
 		return err
 	}
 	if f.pipeline != nil {
-		err = f.pipeline.transfer(ctx, download, upload)
+		err = f.pipeline.transfer(ctx, download, upload, func(ctx context.Context) error { return stream.wait(ctx, min(opts.media.Size, tuploader.MaxPartSize)) })
 	} else {
 		err = download(ctx)
 		if err == nil {

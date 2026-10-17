@@ -130,16 +130,16 @@ of the check commands above.
 ## Deliberate limits
 
 - This is a finite CLI batch, not the future resident Bot backend
-- Each individual file is downloaded fully before its upload starts; different
-  files overlap, including members of the same album
-- No single-file streaming, adaptive bandwidth tuner or resume ledger is added
+- Enhanced clone streams each file through a temporary disk spool while its
+  download is still running; see [same-file-streaming.md](same-file-streaming.md)
+- No adaptive bandwidth tuner or resume ledger is added
 - Ctrl+C cancels the batch; there is no external per-job cancel API yet
 - A final acknowledgement failure remains uncertain, rather than safe to retry
 - Windows/macOS cross-compilation does not replace native device testing
 
 The resident follow-up is documented in [enhance-resident.md](enhance-resident.md).
 
-## Sustained large-album benchmark
+## Sustained large-album benchmark before same-file streaming
 
 A subsequent Linux amd64 run forced byte transfer for three videos, totaling
 1,217,223,048 bytes (about 1.13 GiB). Settings were two download slots, two upload
@@ -168,8 +168,9 @@ directory was empty afterward. The Bot was restored and test posts retained.
 These are active-direction averages, not peak line rates. The test demonstrates
 sustained overlap, not network saturation or the account's maximum throughput.
 There was no isolated one-way baseline; those rates cannot quantify degradation
-under duplex load. Each file still has a download-first startup and an upload
-tail; a three-file workload cannot keep both directions busy throughout.
+under duplex load. This earlier implementation downloaded each file fully
+before uploading it, with a download-first startup and upload tail. The
+subsequent same-file implementation removes that dependency.
 
 The resident protocol was separately exercised with two simultaneous live
 requests, cancellation of one, and another request on the surviving connection.

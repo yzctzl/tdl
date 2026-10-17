@@ -34,12 +34,19 @@ func transferStage(ctx context.Context, slots chan struct{}, run func(context.Co
 	return run(ctx)
 }
 
-func (p *TransferPool) transfer(ctx context.Context, download, upload func(context.Context) error) error {
-	if err := transferStage(ctx, p.downloads, download); err != nil {
-		return err
-	}
-	// Uploads never retain a download slot. Both directions can remain busy.
-	return transferStage(ctx, p.uploads, upload)
+func (p *TransferPool) transfer(ctx context.Context, download, upload func(context.Context) error, ready func(context.Context) error) error {
+	workers, ctx := errgroup.WithContext(ctx)
+	workers.Go(func() error { return transferStage(ctx, p.downloads, download) })
+	workers.Go(func() error {
+		// Waiting for the first bytes must not occupy another file's upload slot.
+		if ready != nil {
+			if err := ready(ctx); err != nil {
+				return err
+			}
+		}
+		return transferStage(ctx, p.uploads, upload)
+	})
+	return workers.Wait()
 }
 
 func prepareAlbum(ctx context.Context, messages []*tg.Message, prepare func(context.Context, *tg.Message) (tg.InputMediaClass, error)) ([]tg.InputMediaClass, error) {

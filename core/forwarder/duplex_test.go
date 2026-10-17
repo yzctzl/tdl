@@ -29,11 +29,11 @@ func TestDirectionsOverlapAndCancellationReleasesSlots(t *testing.T) {
 			close(uploading)
 			<-ctx.Done()
 			return ctx.Err()
-		})
+		}, nil)
 	}()
 	<-uploading
 	go func() {
-		done <- pipeline.transfer(ctx, func(context.Context) error { close(downloaded); return nil }, func(context.Context) error { return nil })
+		done <- pipeline.transfer(ctx, func(context.Context) error { close(downloaded); return nil }, func(context.Context) error { return nil }, nil)
 	}()
 	select {
 	case <-downloaded:

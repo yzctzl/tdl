@@ -117,7 +117,7 @@ The same report helper accepts finite and resident logs and aggregates active
 operations across requests. A cancelled group is counted separately from failed
 groups in new-format logs.
 
-## Sustained resident check
+## Sustained resident check before same-file streaming
 
 A later run kept the same account open for a 1.13 GiB three-video album and a
 dynamically submitted ten-member mixed album. It used two request workers, two
@@ -167,9 +167,10 @@ operations must be moved behind the same account owner or otherwise given a
 verified independent authorization. Only changing the upload method leaves the
 current session coordination bottleneck in place.
 
-This stage still downloads each file fully before uploading it; different files
-and requests overlap. Single-file streaming, crash adoption of a detached child,
-a transport-side durable ledger and an adaptive bandwidth tuner are not added.
+Files now download and upload concurrently through a disk spool, as described
+in [same-file-streaming.md](same-file-streaming.md). Crash adoption of a detached
+child, a transport-side durable ledger and an adaptive bandwidth tuner are not
+added.
 A 1.13 GiB finite-album benchmark is recorded in
-[duplex-prototype.md](duplex-prototype.md#sustained-large-album-benchmark). Higher-fanout resident tests and one-way baselines are still needed before
+[duplex-prototype.md](duplex-prototype.md#sustained-large-album-benchmark-before-same-file-streaming). Higher-fanout resident tests and one-way baselines are still needed before
 choosing production defaults.
