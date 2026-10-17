@@ -138,7 +138,46 @@ of the check commands above.
 
 The resident follow-up is documented in [enhance-resident.md](enhance-resident.md).
 
-The next decision should follow a larger-file and longer-running benchmark.
-If worthwhile, the next stage is a resident request/response interface that owns
-all MTProto operations for an account. Python keeps permissions, durable business
-state and Bot API delivery, avoiding two clients competing over one authorization.
+## Sustained large-album benchmark
+
+A subsequent Linux amd64 run forced byte transfer for three videos, totaling
+1,217,223,048 bytes (about 1.13 GiB). Settings were two download slots, two upload
+slots, eight per-file chunk workers, four group workers and the default pool size
+of eight. The existing workspace network/proxy configuration was retained.
+
+| Measurement | Observed value |
+| --- | --- |
+| Wall time including connection/setup/shutdown | 348.71 seconds |
+| Group event elapsed time | 344.32 seconds |
+| Download operations active | 219.97 seconds |
+| Upload operations active | 244.37 seconds |
+| Both directions active | 121.09 seconds |
+| Download rate over its active time | 5.28 MiB/s |
+| Upload rate over its active time | 4.75 MiB/s |
+| Direction peaks | Two downloads and two uploads |
+| Peak temporary file bytes, sampled each second | About 961.75 MiB |
+| Peak resident memory, sampled each second | About 111.07 MiB |
+| Result | One native album, three confirmed destination IDs |
+
+Both direction counters finished at 1,217,244,417 bytes, including original
+thumbnails. Destination readback matched all three document sizes, source order,
+880 x 1906 video dimensions, duration and thumbnail presence. The scratch
+directory was empty afterward. The Bot was restored and test posts retained.
+
+These are active-direction averages, not peak line rates. The test demonstrates
+sustained overlap, not network saturation or the account's maximum throughput.
+There was no isolated one-way baseline; those rates cannot quantify degradation
+under duplex load. Each file still has a download-first startup and an upload
+tail; a three-file workload cannot keep both directions busy throughout.
+
+The resident protocol was separately exercised with two simultaneous live
+requests, cancellation of one, and another request on the surviving connection.
+Large-file throughput above belongs to the finite command, not a resident
+many-request benchmark. Before production integration, move all account MTProto
+operations behind that resident owner, retaining Python permissions, durable
+business state and Bot API delivery.
+
+Targeted package tests, race checks, native builds and Windows amd64/macOS arm64
+cross-builds passed. A broader root/core test run passed its offline packages but
+the upstream `test` suite timed out trying to connect to its separately required
+local Telegram test server at `127.0.0.1:10443`; that suite was not validated.

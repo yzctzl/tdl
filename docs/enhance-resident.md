@@ -133,4 +133,7 @@ current session coordination bottleneck in place.
 This stage still downloads each file fully before uploading it; different files
 and requests overlap. Single-file streaming, crash adoption of a detached child,
 a transport-side durable ledger and an adaptive bandwidth tuner are not added.
-Larger-file benchmarks are required before choosing production defaults.
+A 1.13 GiB finite-album benchmark is recorded in
+[duplex-prototype.md](duplex-prototype.md#sustained-large-album-benchmark). A
+resident many-request throughput baseline is still needed before choosing
+production defaults.
