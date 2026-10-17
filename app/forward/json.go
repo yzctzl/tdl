@@ -139,6 +139,7 @@ func (p *jsonProgress) OnPlan(elem forwarder.Elem, messages []*tg.Message) {
 	}
 	p.mu.Lock()
 	defer p.mu.Unlock()
+	value.Time = time.Now().UTC()
 	if p.err == nil {
 		p.err = p.out.Encode(value)
 	}

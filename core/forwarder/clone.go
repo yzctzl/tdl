@@ -113,10 +113,16 @@ type uploaded struct {
 }
 
 func (u uploaded) Chunk(_ context.Context, state uploader.ProgressState) error {
-	delta := state.Uploaded - u.prev.Swap(state.Uploaded)
-	u.opts.progress.add(delta)
-	u.notify(delta)
-
+	// Chunk acknowledgements can arrive out of order across upload workers.
+	// Publish only the new high-water mark so progress never moves backwards.
+	for previous := u.prev.Load(); state.Uploaded > previous; previous = u.prev.Load() {
+		if u.prev.CompareAndSwap(previous, state.Uploaded) {
+			delta := state.Uploaded - previous
+			u.opts.progress.add(delta)
+			u.notify(delta)
+			break
+		}
+	}
 	return nil
 }
 
