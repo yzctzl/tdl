@@ -48,6 +48,26 @@ Destination readback preserved byte size, dimensions, duration and thumbnail
 presence. Logs and destination receipts remain in ignored private test storage.
 These timings demonstrate overlap and are not a controlled speed comparison.
 
+A second live run selected one 462,151,305-byte video with `--single` and forced
+reupload. The first upload acknowledgement arrived after only 20,971,520 bytes
+had downloaded. Wall time was 116.96 seconds, with download and upload operations
+overlapping for 98.04 seconds. Active-direction averages were 4.22 MiB/s down and
+4.16 MiB/s up. Both byte counters finished at 462,157,893 bytes including the
+original thumbnail. Destination readback matched the exact document size,
+880 x 1906 dimensions, duration and thumbnail presence, and local scratch files
+were removed. These measurements used eight native chunk workers and the
+existing account/network configuration; they do not establish bandwidth limits.
+
+A live resident test then cancelled a single-video request after it had both
+acknowledged upload bytes and an active download. A concurrent ten-member album
+completed successfully, and a subsequent dry run succeeded on the same resident
+connection. Cancelled work had no confirmed destination message, and request
+scratch directories were empty after draining. The workspace Bot was restored.
+
+Native builds, Windows amd64/macOS arm64 cross-builds, vet and five repeated race
+runs of the affected forwarder, forward app, command and dispatcher packages
+passed. Cross-builds do not replace native device execution.
+
 ```sh
 go test -race ./core/forwarder ./app/forward ./cmd ./core/dispatch
 ```
