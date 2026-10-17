@@ -1,6 +1,7 @@
 package kv
 
 import (
+	"bytes"
 	"context"
 	"os"
 	"time"
@@ -135,7 +136,8 @@ func (l *legacyKV) Get(_ context.Context, key string) ([]byte, error) {
 	var val []byte
 
 	if err := l.db.View(func(tx *bbolt.Tx) error {
-		val = tx.Bucket(l.ns).Get([]byte(key))
+		// Bolt values are valid only while the read transaction is open.
+		val = bytes.Clone(tx.Bucket(l.ns).Get([]byte(key)))
 		return nil
 	}); err != nil {
 		return nil, err

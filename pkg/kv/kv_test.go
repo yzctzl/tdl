@@ -154,3 +154,19 @@ func TestStorage_MigrateFrom(t *testing.T) {
 		}
 	})
 }
+
+func TestReadValueRemainsStableAfterLaterWrites(t *testing.T) {
+	forEachStorage(t, func(driver Storage, t *testing.T) {
+		kv, err := driver.Open("snapshot")
+		require.NoError(t, err)
+		ctx := context.Background()
+		original := []byte("original session or peer metadata")
+		require.NoError(t, kv.Set(ctx, "key", original))
+		snapshot, err := kv.Get(ctx, "key")
+		require.NoError(t, err)
+		for index := range 20 {
+			require.NoError(t, kv.Set(ctx, "key", []byte(fmt.Sprintf("replacement metadata %d", index))))
+		}
+		require.Equal(t, original, snapshot)
+	})
+}
