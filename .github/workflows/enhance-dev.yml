@@ -1,0 +1,42 @@
+name: Enhanced development builds
+
+on:
+  push:
+    branches: [dev]
+  pull_request:
+    branches: [dev]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: enhanced-dev-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows, linux, darwin]
+        arch: [amd64, arm64]
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache-dependency-path: |
+            go.sum
+            core/go.sum
+            extension/go.sum
+      - name: Build and package
+        run: python3 scripts/build_binaries.py --target '${{ matrix.os }}/${{ matrix.arch }}'
+      - name: Upload development artifacts
+        uses: actions/upload-artifact@v7
+        with:
+          name: tdl-${{ matrix.os }}-${{ matrix.arch }}
+          path: .tdl/dist/
+          include-hidden-files: true
+          if-no-files-found: error
+          retention-days: 14

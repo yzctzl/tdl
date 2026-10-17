@@ -190,3 +190,25 @@ added.
 A 1.13 GiB finite-album benchmark is recorded in
 [duplex-prototype.md](duplex-prototype.md#sustained-large-album-benchmark-before-same-file-streaming). Higher-fanout resident tests and one-way baselines are still needed before
 choosing production defaults.
+
+## Development artifacts
+
+Build all six Windows/Linux/macOS amd64/arm64 executables and archives with:
+
+```sh
+python3 scripts/build_binaries.py
+```
+
+The output uses the existing `.tdl/dist` artifact directory. Each target has its
+own directory and executable; archives, SHA-256 checksums and `build.json` sit at
+the output root. Use `--target linux/amd64` to select a target. Python 3.11+ and Go
+are required on the build host. Go workspace mode is explicitly enabled so the
+modified local core module is included. Development version/commit metadata is
+embedded in every binary; uncommitted source changes add a dirty marker.
+
+The `Enhanced development builds` workflow runs on pushes and pull requests to
+`dev`. Its six-target matrix uploads artifacts to the workflow run, retained for
+14 days. It does not create tags, Releases or container images. Enabling Actions
+does not itself trigger a run; pushing this workflow to `dev` triggers the first
+build. Existing master-only checks and tag-triggered release workflows retain
+their separate triggers.
