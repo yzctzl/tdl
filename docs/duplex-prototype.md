@@ -57,9 +57,10 @@ concurrently, stores results at their source indices, and submits the final
 album only after every member succeeds. Video attributes and original previews
 use the native clone path; thumbnails are not reconstructed or padded.
 
-Workers have private deduplication maps and random generators. A single
-coordinator deduplicates source messages/albums before dispatch. Only transfer
-budgets and a synchronized progress reporter are shared.
+Workers have private deduplication maps. Send IDs use Go's concurrency-safe
+global random generator, avoiding per-worker time-based seeds. A single
+coordinator deduplicates source messages/albums before dispatch. Transfer budgets
+and a synchronized progress reporter are shared.
 
 One failing group cancels other in-flight work in this experimental batch. A
 failed member prevents submission of that group's final album. Completed groups

@@ -2,8 +2,7 @@ package forwarder
 
 import (
 	"context"
-	"math/rand"
-	"time"
+	"math/rand/v2"
 
 	"github.com/go-faster/errors"
 	"github.com/gotd/td/bin"
@@ -38,7 +37,6 @@ type Options struct {
 
 type Forwarder struct {
 	sent     map[tuple]struct{} // used to filter grouped messages which are already sent
-	rand     *rand.Rand
 	opts     Options
 	pipeline *TransferPool
 }
@@ -51,7 +49,6 @@ type tuple struct {
 func New(opts Options) *Forwarder {
 	f := &Forwarder{
 		sent: make(map[tuple]struct{}),
-		rand: rand.New(rand.NewSource(time.Now().UnixNano())),
 		opts: opts,
 	}
 	if opts.Transfers != nil {
@@ -143,7 +140,7 @@ func (f *Forwarder) forwardMessage(ctx context.Context, elem Elem, grouped ...*t
 			Peer:                   elem.To().InputPeer(),
 			ReplyTo:                getReplyTo(elem.Thread()),
 			Message:                msg.Message,
-			RandomID:               f.rand.Int63(),
+			RandomID:               rand.Int64(),
 			ReplyMarkup:            msg.ReplyMarkup,
 			Entities:               f.entities(msg.Entities),
 			ScheduleDate:           0,
@@ -279,7 +276,7 @@ func (f *Forwarder) forwardMessage(ctx context.Context, elem Elem, grouped ...*t
 			directForward := func(ids ...int) error {
 				randIDs := make([]int64, 0, len(ids))
 				for range ids {
-					randIDs = append(randIDs, f.rand.Int63())
+					randIDs = append(randIDs, rand.Int64())
 				}
 
 				req := &tg.MessagesForwardMessagesRequest{
@@ -336,7 +333,7 @@ func (f *Forwarder) forwardMessage(ctx context.Context, elem Elem, grouped ...*t
 					return err
 				}
 				for index, gm := range grouped {
-					single := tg.InputSingleMedia{Media: prepared[index], RandomID: f.rand.Int63(), Message: gm.Message, Entities: f.entities(gm.Entities)}
+					single := tg.InputSingleMedia{Media: prepared[index], RandomID: rand.Int64(), Message: gm.Message, Entities: f.entities(gm.Entities)}
 					single.SetFlags()
 					media = append(media, single)
 				}
@@ -347,7 +344,7 @@ func (f *Forwarder) forwardMessage(ctx context.Context, elem Elem, grouped ...*t
 						log.Debug("Can't convert forwarded media", zap.Error(err))
 						continue
 					}
-					single := tg.InputSingleMedia{Media: m, RandomID: f.rand.Int63(), Message: gm.Message, Entities: f.entities(gm.Entities)}
+					single := tg.InputSingleMedia{Media: m, RandomID: rand.Int64(), Message: gm.Message, Entities: f.entities(gm.Entities)}
 					single.SetFlags()
 					media = append(media, single)
 				}
@@ -400,7 +397,7 @@ func (f *Forwarder) forwardMessage(ctx context.Context, elem Elem, grouped ...*t
 			ReplyTo:                getReplyTo(elem.Thread()),
 			Media:                  media,
 			Message:                elem.Msg().Message,
-			RandomID:               rand.Int63(),
+			RandomID:               rand.Int64(),
 			ReplyMarkup:            elem.Msg().ReplyMarkup,
 			Entities:               f.entities(elem.Msg().Entities),
 			ScheduleDate:           0,

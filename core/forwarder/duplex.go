@@ -97,7 +97,7 @@ func (f *Forwarder) forwardDuplex(ctx context.Context) error {
 			}
 		}
 		// Only this coordinator writes deduplication state. Workers own separate
-		// forwarders and random generators, sharing only direction budgets.
+		// forwarders, sharing only direction budgets and the safe global RNG.
 		f.sent[key] = struct{}{}
 		workers.Go(func() error {
 			if err := ctx.Err(); err != nil {
