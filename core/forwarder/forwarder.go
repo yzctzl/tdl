@@ -25,16 +25,20 @@ import (
 type Mode int
 
 type Options struct {
-	Pool     dcpool.Pool
-	Threads  int
-	Iter     Iter
-	Progress Progress
+	Pool           dcpool.Pool
+	Threads        int
+	Iter           Iter
+	Progress       Progress
+	Duplex         *DuplexOptions
+	RemoveSpoilers bool
+	Reupload       bool
 }
 
 type Forwarder struct {
-	sent map[tuple]struct{} // used to filter grouped messages which are already sent
-	rand *rand.Rand
-	opts Options
+	sent     map[tuple]struct{} // used to filter grouped messages which are already sent
+	rand     *rand.Rand
+	opts     Options
+	pipeline *transferPipeline
 }
 
 type tuple struct {
@@ -43,14 +47,21 @@ type tuple struct {
 }
 
 func New(opts Options) *Forwarder {
-	return &Forwarder{
+	f := &Forwarder{
 		sent: make(map[tuple]struct{}),
 		rand: rand.New(rand.NewSource(time.Now().UnixNano())),
 		opts: opts,
 	}
+	if opts.Duplex != nil && opts.Duplex.Downloads > 0 && opts.Duplex.Uploads > 0 {
+		f.pipeline = newTransferPipeline(opts.Duplex.Downloads, opts.Duplex.Uploads)
+	}
+	return f
 }
 
 func (f *Forwarder) Forward(ctx context.Context) error {
+	if f.opts.Duplex != nil {
+		return f.forwardDuplex(ctx)
+	}
 	for f.opts.Iter.Next(ctx) {
 		elem := f.opts.Iter.Value()
 		if _, ok := f.sent[f.tuple(elem.From(), elem.Msg())]; ok {
@@ -105,6 +116,13 @@ func (f *Forwarder) forwardMessage(ctx context.Context, elem Elem, grouped ...*t
 	if err != nil {
 		return errors.Wrap(err, "media total size")
 	}
+	if progress, ok := f.opts.Progress.(PlanProgress); ok {
+		messages := grouped
+		if len(messages) == 0 {
+			messages = []*tg.Message{elem.Msg()}
+		}
+		progress.OnPlan(elem, messages)
+	}
 	done := atomic.NewInt64(0)
 
 	forwardTextOnly := func(msg *tg.Message) error {
@@ -123,19 +141,20 @@ func (f *Forwarder) forwardMessage(ctx context.Context, elem Elem, grouped ...*t
 			Message:                msg.Message,
 			RandomID:               f.rand.Int63(),
 			ReplyMarkup:            msg.ReplyMarkup,
-			Entities:               msg.Entities,
+			Entities:               f.entities(msg.Entities),
 			ScheduleDate:           0,
 			SendAs:                 nil,
 		}
 		req.SetFlags()
 
-		if _, err := f.forwardClient(ctx, elem).MessagesSendMessage(ctx, req); err != nil {
+		result, err := f.forwardClient(ctx, elem).MessagesSendMessage(ctx, req)
+		if err != nil {
 			return errors.Wrap(err, "send message")
 		}
-		return nil
+		return f.sentResult(elem, result, []int64{req.RandomID})
 	}
 
-	convForwardedMedia := func(msg *tg.Message) (tg.InputMediaClass, error) {
+	convForwardedMedia := func(ctx context.Context, msg *tg.Message) (tg.InputMediaClass, error) {
 		if _, hasMedia := msg.GetMedia(); !hasMedia {
 			// media can't be forwarded via simple copy(it depends on the server ids)
 			// if it's not a media message, just break and send text copy
@@ -147,10 +166,13 @@ func (f *Forwarder) forwardMessage(ctx context.Context, elem Elem, grouped ...*t
 
 		// we should clone photo and document via re-upload, it will be banned if we forward it directly.
 		// but other media can be forwarded directly via copy
-		if (!protectedDialog(elem.From()) && !protectedMessage(msg)) || !photoOrDocument(msg.Media) {
+		if (!f.opts.Reupload && !protectedDialog(elem.From()) && !protectedMessage(msg)) || !photoOrDocument(msg.Media) {
 			media, ok := tmedia.ConvInputMedia(msg.Media)
 			if !ok {
 				return nil, errors.Errorf("can't convert message %d to input class directly", msg.ID)
+			}
+			if f.opts.RemoveSpoilers {
+				clearSpoiler(media)
 			}
 			return media, nil
 		}
@@ -184,7 +206,7 @@ func (f *Forwarder) forwardMessage(ctx context.Context, elem Elem, grouped ...*t
 		switch m := msg.Media.(type) {
 		case *tg.MessageMediaPhoto:
 			photo := &tg.InputMediaUploadedPhoto{
-				Spoiler:    m.Spoiler,
+				Spoiler:    m.Spoiler && !f.opts.RemoveSpoilers,
 				File:       mediaFile,
 				TTLSeconds: m.TTLSeconds,
 			}
@@ -200,7 +222,7 @@ func (f *Forwarder) forwardMessage(ctx context.Context, elem Elem, grouped ...*t
 			document := &tg.InputMediaUploadedDocument{
 				NosoundVideo: false, // do not set
 				ForceFile:    false, // do not set
-				Spoiler:      m.Spoiler,
+				Spoiler:      m.Spoiler && !f.opts.RemoveSpoilers,
 				File:         mediaFile,
 				MimeType:     doc.MimeType,
 				Attributes:   doc.Attributes,
@@ -299,24 +321,32 @@ func (f *Forwarder) forwardMessage(ctx context.Context, elem Elem, grouped ...*t
 	fallback:
 		fallthrough
 	case ModeClone:
+		if _, hasMedia := elem.Msg().GetMedia(); !hasMedia && len(grouped) == 0 {
+			return forwardTextOnly(elem.Msg())
+		}
 		if len(grouped) > 0 {
-			media := make([]tg.InputSingleMedia, 0, len(grouped))
-			for _, gm := range grouped {
-				m, err := convForwardedMedia(gm)
+			var media []tg.InputSingleMedia
+			if f.pipeline != nil {
+				prepared, err := prepareAlbum(ctx, grouped, convForwardedMedia)
 				if err != nil {
-					log.Debug("Can't convert forwarded media", zap.Error(err))
-					continue
+					return err
 				}
-
-				single := tg.InputSingleMedia{
-					Media:    m,
-					RandomID: f.rand.Int63(),
-					Message:  gm.Message,
-					Entities: gm.Entities,
+				for index, gm := range grouped {
+					single := tg.InputSingleMedia{Media: prepared[index], RandomID: f.rand.Int63(), Message: gm.Message, Entities: f.entities(gm.Entities)}
+					single.SetFlags()
+					media = append(media, single)
 				}
-				single.SetFlags()
-
-				media = append(media, single)
+			} else {
+				for _, gm := range grouped {
+					m, err := convForwardedMedia(ctx, gm)
+					if err != nil {
+						log.Debug("Can't convert forwarded media", zap.Error(err))
+						continue
+					}
+					single := tg.InputSingleMedia{Media: m, RandomID: f.rand.Int63(), Message: gm.Message, Entities: f.entities(gm.Entities)}
+					single.SetFlags()
+					media = append(media, single)
+				}
 			}
 
 			if len(media) > 0 {
@@ -333,17 +363,25 @@ func (f *Forwarder) forwardMessage(ctx context.Context, elem Elem, grouped ...*t
 					SendAs:                 nil,
 				}
 				req.SetFlags()
-				if _, err := f.forwardClient(ctx, elem).MessagesSendMultiMedia(ctx, req); err != nil {
+				result, err := f.forwardClient(ctx, elem).MessagesSendMultiMedia(ctx, req)
+				if err != nil {
 					return errors.Wrap(err, "send multi media")
 				}
-				return nil
+				ids := make([]int64, len(media))
+				for i := range media {
+					ids[i] = media[i].RandomID
+				}
+				return f.sentResult(elem, result, ids)
 			}
 
 			return forwardTextOnly(elem.Msg())
 		}
 
-		media, err := convForwardedMedia(elem.Msg())
+		media, err := convForwardedMedia(ctx, elem.Msg())
 		if err != nil {
+			if f.pipeline != nil {
+				return errors.Wrap(err, "prepare media")
+			}
 			log.Debug("Can't convert forwarded media", zap.Error(err))
 			return forwardTextOnly(elem.Msg())
 		}
@@ -360,16 +398,17 @@ func (f *Forwarder) forwardMessage(ctx context.Context, elem Elem, grouped ...*t
 			Message:                elem.Msg().Message,
 			RandomID:               rand.Int63(),
 			ReplyMarkup:            elem.Msg().ReplyMarkup,
-			Entities:               elem.Msg().Entities,
+			Entities:               f.entities(elem.Msg().Entities),
 			ScheduleDate:           0,
 			SendAs:                 nil,
 		}
 		req.SetFlags()
 
-		if _, err := f.forwardClient(ctx, elem).MessagesSendMedia(ctx, req); err != nil {
+		result, err := f.forwardClient(ctx, elem).MessagesSendMedia(ctx, req)
+		if err != nil {
 			return errors.Wrap(err, "send single media")
 		}
-		return nil
+		return f.sentResult(elem, result, []int64{req.RandomID})
 	}
 
 	return errors.Errorf("unsupported mode %v", elem.Mode())

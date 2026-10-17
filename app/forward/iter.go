@@ -97,7 +97,14 @@ func (i *iter) Next(ctx context.Context) bool {
 
 	// if delay is set, sleep for a while for each iteration
 	if i.opts.delay > 0 && (i.i+i.j) > 0 { // skip first delay
-		time.Sleep(i.opts.delay)
+		timer := time.NewTimer(i.opts.delay)
+		select {
+		case <-ctx.Done():
+			timer.Stop()
+			i.err = ctx.Err()
+			return false
+		case <-timer.C:
+		}
 	}
 
 	p, m := i.opts.dialogs[i.i].Peer, i.opts.dialogs[i.i].Messages[i.j]

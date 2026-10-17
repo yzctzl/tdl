@@ -7,3 +7,6 @@ downloads
 tdl
 .hugo_build.lock
 .DS_Store
+
+# Disposable duplex prototype tools and build outputs
+.prototype/

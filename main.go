@@ -25,12 +25,12 @@ func main() {
 	if err := cmd.New().ExecuteContext(ctx); err != nil {
 		for e, m := range humanizeErrors {
 			if errors.Is(err, e) {
-				color.Red("%s", m)
+				color.New(color.FgRed).Fprintf(os.Stderr, "%s\n", m)
 				os.Exit(1)
 			}
 		}
 
-		color.Red("Error: %+v", err)
+		color.New(color.FgRed).Fprintf(os.Stderr, "Error: %+v\n", err)
 		os.Exit(1)
 	}
 }

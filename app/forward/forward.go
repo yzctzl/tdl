@@ -29,14 +29,20 @@ import (
 )
 
 type Options struct {
-	From   []string
-	To     string
-	Edit   string
-	Mode   forwarder.Mode
-	Silent bool
-	DryRun bool
-	Single bool
-	Desc   bool
+	From           []string
+	To             string
+	Edit           string
+	Mode           forwarder.Mode
+	Silent         bool
+	DryRun         bool
+	Single         bool
+	Desc           bool
+	Duplex         bool
+	JSON           bool
+	Downloads      int
+	Uploads        int
+	RemoveSpoilers bool
+	Reupload       bool
 }
 
 func Run(ctx context.Context, c *telegram.Client, kvd storage.Storage, opts Options) (rerr error) {
@@ -78,10 +84,29 @@ func Run(ctx context.Context, c *telegram.Client, kvd storage.Storage, opts Opti
 		return errors.Wrap(err, "resolve edit")
 	}
 
-	fwProgress := prog.New(pw.FormatNumber)
-	fwProgress.SetNumTrackersExpected(totalMessages(dialogs))
-	if !viper.GetBool(consts.FlagDisableProgressPS) {
-		prog.EnablePS(ctx, fwProgress)
+	var duplex *forwarder.DuplexOptions
+	if opts.Duplex {
+		duplex = &forwarder.DuplexOptions{Groups: viper.GetInt(consts.FlagLimit), Downloads: opts.Downloads, Uploads: opts.Uploads}
+		if duplex.Groups < 1 || duplex.Downloads < 1 || duplex.Uploads < 1 {
+			return fmt.Errorf("concurrency must be positive")
+		}
+		if opts.Mode != forwarder.ModeClone || !opts.JSON {
+			return fmt.Errorf("duplex requires clone mode and JSON output")
+		}
+	}
+	var reporter forwarder.Progress
+	if opts.JSON {
+		reporter = newJSONProgress(os.Stdout)
+	} else {
+		fwProgress := prog.New(pw.FormatNumber)
+		fwProgress.SetNumTrackersExpected(totalMessages(dialogs))
+		if !viper.GetBool(consts.FlagDisableProgressPS) {
+			prog.EnablePS(ctx, fwProgress)
+		}
+
+		go fwProgress.Render()
+		defer prog.Wait(ctx, fwProgress)
+		reporter = newProgress(fwProgress)
 	}
 
 	fw := forwarder.New(forwarder.Options{
@@ -98,14 +123,20 @@ func Run(ctx context.Context, c *telegram.Client, kvd storage.Storage, opts Opti
 			grouped: !opts.Single,
 			delay:   viper.GetDuration(consts.FlagDelay),
 		}),
-		Progress: newProgress(fwProgress),
-		Threads:  viper.GetInt(consts.FlagThreads),
+		Progress:       reporter,
+		Duplex:         duplex,
+		RemoveSpoilers: opts.RemoveSpoilers,
+		Reupload:       opts.Reupload,
+		Threads:        viper.GetInt(consts.FlagThreads),
 	})
 
-	go fwProgress.Render()
-	defer prog.Wait(ctx, fwProgress)
-
-	return fw.Forward(ctx)
+	if err := fw.Forward(ctx); err != nil {
+		return err
+	}
+	if progress, ok := reporter.(*jsonProgress); ok {
+		return progress.Err()
+	}
+	return nil
 }
 
 func collectDialogs(ctx context.Context, input []string, desc bool) ([]*tmessage.Dialog, error) {

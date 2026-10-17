@@ -138,6 +138,7 @@ func New() *cobra.Command {
 	cmd.AddGroup(groupAccount, groupTools, groupExtensions)
 
 	cmd.AddCommand(NewVersion(), NewLogin(), NewDownload(), NewForward(),
+		NewEnhance(),
 		NewChat(), NewUpload(), NewBackup(), NewRecover(), NewMigrate(),
 		NewGen(), NewUpdate(), NewExtension(em))
 
