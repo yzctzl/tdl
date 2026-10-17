@@ -15,7 +15,7 @@ func TestEnhanceDefaultsAndRejectsIncompatibleModesBeforeConnecting(t *testing.T
 			}
 		}
 	}
-	for _, args := range [][]string{{"--json=false"}, {"--mode=direct"}, {"--downloads=0"}, {"--uploads=0"}} {
+	for _, args := range [][]string{{"--json=false"}, {"--mode=direct"}, {"--downloads=-1"}, {"--uploads=-1"}} {
 		command := NewEnhance()
 		if err := command.ParseFlags(args); err != nil {
 			t.Fatal(err)

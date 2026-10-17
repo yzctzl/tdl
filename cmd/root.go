@@ -162,7 +162,7 @@ func New() *cobra.Command {
 
 	cmd.PersistentFlags().IntP(consts.FlagThreads, "t", 4, "max threads for transfer one item")
 	cmd.PersistentFlags().IntP(consts.FlagLimit, "l", 2, "max number of concurrent tasks")
-	cmd.PersistentFlags().Int(consts.FlagPoolSize, 8, "specify the size of the DC pool, zero means infinity")
+	cmd.PersistentFlags().Int(consts.FlagPoolSize, 8, "max connections per DC; enhance auto-sizes unless set explicitly; zero means unlimited")
 	cmd.PersistentFlags().Duration(consts.FlagDelay, 0, "delay between each task, zero means no delay")
 
 	cmd.PersistentFlags().String(consts.FlagNTP, "", "ntp server host, if not set, use system time")

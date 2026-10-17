@@ -23,6 +23,21 @@ not budgets multiplied by the number of workers. Per-file chunk threading still
 uses `-t`. Temporary directories are private to a request and are removed before
 its completion record. A failed request does not cancel unrelated requests.
 
+The enhanced commands use automatic concurrency defaults:
+
+- `--downloads=0` and `--uploads=0` each follow `-l` (active request count)
+- Automatic per-DC pool capacity is `max(8 * workers, threads * (downloads + uploads))`
+- Explicit `--pool` or `TDL_POOL` overrides automatic sizing, including `0` for
+  unlimited capacity; explicit file-direction limits remain supported
+- Connections open on demand; capacity is shared and is not a dedicated
+  connection reservation or bandwidth guarantee for each task
+
+For example, `-l 4 -t 4` defaults to four downloading files, four uploading files
+and a per-DC pool capacity of 32. `-l 4 -t 8` raises the pool capacity to 64 to
+cover both directions' configured chunk demand. The future Bot integration should
+pass its `WORKERS` value as `-l`; the current production Bot has not switched.
+Ordinary non-duplex `forward` retains its existing defaults.
+
 Queued cancellation removes the request immediately and frees queue capacity.
 Active cancellation propagates to its RPCs and waits for native cleanup; it does
 not disconnect the shared client or close its pools. The protocol loop continues
@@ -37,7 +52,8 @@ The input stream is closed when the server exits, unblocking its reader.
 
 The first output record has `id: 0` and `event: "ready"`. Its `data` contains
 `protocol`, `workers`, `queue`, and `info`. The latter contains the verified
-`user_id`, `username`, and account-wide `downloads`/`uploads` budgets. The caller
+`user_id`, `username`, account-wide `downloads`/`uploads` budgets and effective
+per-DC `pool_size` (zero means unlimited). The caller
 must compare this identity with the intended execution account.
 
 Every input has a positive integer `id` strictly greater than the preceding input

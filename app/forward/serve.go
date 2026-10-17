@@ -13,11 +13,11 @@ import (
 )
 
 // Serve uses one logged-in client for the whole JSON-lines connection.
-func Serve(ctx context.Context, client *telegram.Client, kvd storage.Storage, input io.ReadCloser, output io.Writer, workers, queue, downloads, uploads int, temporary string) (rerr error) {
-	if workers < 1 || queue < 0 || downloads < 1 || uploads < 1 {
+func Serve(ctx context.Context, client *telegram.Client, kvd storage.Storage, input io.ReadCloser, output io.Writer, workers, queue, downloads, uploads, pool int, temporary string) (rerr error) {
+	if workers < 1 || queue < 0 || downloads < 1 || uploads < 1 || pool < 0 {
 		return fmt.Errorf("invalid resident concurrency settings")
 	}
-	session := newSession(ctx, client, kvd)
+	session := newSession(ctx, client, kvd, pool)
 	defer func() {
 		if err := session.Close(); rerr == nil {
 			rerr = err
@@ -29,7 +29,7 @@ func Serve(ctx context.Context, client *telegram.Client, kvd storage.Storage, in
 		return err
 	}
 	username, _ := me.Username()
-	info := map[string]any{"user_id": me.ID(), "username": username, "downloads": downloads, "uploads": uploads}
+	info := map[string]any{"user_id": me.ID(), "username": username, "downloads": downloads, "uploads": uploads, "pool_size": pool}
 	return dispatch.Serve(ctx, input, output, dispatch.Options{Workers: workers, Queue: queue, Info: info}, func(ctx context.Context, request dispatch.Request, output io.Writer) error {
 		directory, err := os.MkdirTemp(temporary, "enhance-job-*")
 		if err != nil {

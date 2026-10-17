@@ -7,11 +7,13 @@ import (
 
 	"github.com/gotd/td/telegram"
 	"github.com/spf13/cobra"
+	"github.com/spf13/viper"
 
 	"github.com/iyear/tdl/app/forward"
 	"github.com/iyear/tdl/core/forwarder"
 	"github.com/iyear/tdl/core/logctx"
 	"github.com/iyear/tdl/core/storage"
+	"github.com/iyear/tdl/pkg/consts"
 )
 
 func NewForward() *cobra.Command { return newForward(false) }
@@ -33,8 +35,13 @@ func newForward(enhanced bool) *cobra.Command {
 			if opts.Duplex && (!opts.JSON || opts.Mode != forwarder.ModeClone) {
 				return fmt.Errorf("duplex requires --json and --mode clone")
 			}
-			if opts.Duplex && (opts.Downloads < 1 || opts.Uploads < 1) {
-				return fmt.Errorf("downloads and uploads must be positive")
+			opts.PoolSize = viper.GetInt(consts.FlagPoolSize)
+			if opts.Duplex {
+				_, down, up, pool, err := enhanceConcurrency(cmd, opts.Downloads, opts.Uploads)
+				if err != nil {
+					return err
+				}
+				opts.Downloads, opts.Uploads, opts.PoolSize = down, up, pool
 			}
 			return tRun(cmd.Context(), func(ctx context.Context, c *telegram.Client, kvd storage.Storage) error {
 				return forward.Run(logctx.Named(ctx, "forward"), c, kvd, opts)
@@ -53,8 +60,12 @@ func newForward(enhanced bool) *cobra.Command {
 
 	cmd.Flags().BoolVar(&opts.Duplex, "duplex", enhanced, "overlap downloads and uploads within one account (experimental)")
 	cmd.Flags().BoolVar(&opts.JSON, "json", enhanced, "write structured progress and confirmed results as JSON lines")
-	cmd.Flags().IntVar(&opts.Downloads, "downloads", 2, "maximum simultaneously downloading files in duplex mode")
-	cmd.Flags().IntVar(&opts.Uploads, "uploads", 2, "maximum simultaneously uploading files in duplex mode")
+	fileLimit := 2
+	if enhanced {
+		fileLimit = 0
+	}
+	cmd.Flags().IntVar(&opts.Downloads, "downloads", fileLimit, "simultaneous downloading files; zero follows task concurrency")
+	cmd.Flags().IntVar(&opts.Uploads, "uploads", fileLimit, "simultaneous uploading files; zero follows task concurrency")
 	cmd.Flags().BoolVar(&opts.RemoveSpoilers, "remove-spoilers", enhanced, "remove media and text spoilers from destination copies")
 	cmd.Flags().BoolVar(&opts.Reupload, "reupload", false, "force byte transfer for unprotected media (benchmarking)")
 	if enhanced {

@@ -30,6 +30,7 @@ import (
 )
 
 type Options struct {
+	PoolSize       int
 	From           []string
 	To             string
 	Edit           string
@@ -59,7 +60,7 @@ func Run(ctx context.Context, c *telegram.Client, kvd storage.Storage, opts Opti
 		return nil
 	}
 
-	session := newSession(ctx, c, kvd)
+	session := newSession(ctx, c, kvd, opts.PoolSize)
 	defer multierr.AppendInvoke(&rerr, multierr.Close(session))
 	return session.forward(ctx, opts, "", os.Stdout)
 }
@@ -73,8 +74,8 @@ type session struct {
 	transfers *forwarder.TransferPool
 }
 
-func newSession(ctx context.Context, c *telegram.Client, kvd storage.Storage) *session {
-	pool := dcpool.NewPool(c, int64(viper.GetInt(consts.FlagPoolSize)), tclient.NewDefaultMiddlewares(ctx, viper.GetDuration(consts.FlagReconnectTimeout))...)
+func newSession(ctx context.Context, c *telegram.Client, kvd storage.Storage, size int) *session {
+	pool := dcpool.NewPool(c, int64(size), tclient.NewDefaultMiddlewares(ctx, viper.GetDuration(consts.FlagReconnectTimeout))...)
 	return &session{storage: kvd, pool: pool, manager: peers.Options{Storage: storage.NewPeers(kvd)}.Build(pool.Default(ctx))}
 }
 
